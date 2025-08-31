@@ -1,0 +1,195 @@
+/* Overall layout: two columns */
+body {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 500px auto;
+  height: 100vh;
+  font-family: sans-serif;
+}
+
+/* Left Panel styling */
+#leftPanel {
+  background: #f8f8f8;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* Right Panel styling */
+#rightPanel {
+  background: #ffffff;
+  overflow: hidden;
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+/* Title styling inside left panel with Carnegie Red */
+#leftPanel h1 {
+  margin-top: 0;
+  font-size: 1.8rem;
+  color: #fff;
+  background-color: #C41230;
+  padding: 0.5rem;
+  text-align: center;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+/* Section styling */
+.section {
+  margin-bottom: 1rem;
+}
+.section h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #C41230;
+  padding-bottom: 0.25rem;
+}
+
+/* Info icon styling */
+.info-icon {
+  font-size: 0.9rem;
+  margin-left: 0.3rem;
+  color: #C41230;
+  cursor: pointer;
+}
+
+/* Status message for sensor mapping */
+.status-message {
+  margin-top: 5px;
+  font-size: 0.9rem;
+}
+
+/* Scrollable checklist for Body Alignment */
+.scrollable-checklist {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+  background: #fff;
+  margin-top: 0.5rem;
+}
+.scrollable-checklist label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+}
+
+/* Styling for inputs and buttons */
+input[type="file"] {
+  margin-top: 0.5rem;
+  display: block;
+}
+input[type="number"] {
+  width: 80px;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+}
+button {
+  cursor: pointer;
+  padding: 0.3rem 0.6rem;
+  background-color: #C41230;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+}
+button:hover {
+  background-color: #a10e25;
+}
+
+/* Custom Video Player Styling */
+#videoContainer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+#preRenderedVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#videoControls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(196, 18, 48, 0.85);
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+#playPauseBtn {
+  background-color: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+
+/* Progress bar: show only the background fill (no thumb) */
+#progressBar {
+  flex: 1;
+  margin-right: 0.5rem;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: #ddd;
+  border-radius: 5px;
+  outline: none;
+  pointer-events: none;
+}
+#progressBar::-webkit-slider-thumb {
+  display: none;
+}
+#progressBar::-moz-range-thumb {
+  display: none;
+}
+#timeDisplay {
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+/* Custom Modal Styling with Animation */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  animation: fadeIn 0.3s ease-in-out;
+}
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto;
+  padding: 20px;
+  border: 2px solid #C41230;
+  width: 80%;
+  max-width: 400px;
+  border-radius: 8px;
+  text-align: center;
+  white-space: pre-wrap;
+  animation: slideDown 0.3s ease-in-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.modal-title {
+  color: #C41230;
+  margin-top: 0;
+  font-size: 1.3rem;
+  margin-bottom: 5px;
+}
