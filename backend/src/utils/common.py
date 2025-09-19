@@ -9,7 +9,7 @@ import math
 import numpy as np 
 from scipy.spatial.transform import Rotation as R
 
-from imu_benchmark.constants import constant_common, constant_mt
+from constants import constant_common, constant_mt
 
 
 # --- Make folder if not existing --- #

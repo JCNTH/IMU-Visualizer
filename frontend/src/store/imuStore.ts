@@ -27,6 +27,13 @@ export interface IKResults {
   [key: string]: unknown;
 }
 
+export interface SensorPlacement {
+  type: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  placementView: string;
+}
+
 interface IMUStore {
   // State
   sensorMapping: SensorMapping | null;
@@ -36,6 +43,13 @@ interface IMUStore {
   ikResults: IKResults | null;
   isLoading: boolean;
   error: string | null;
+  
+  // Sensor placement state
+  selectedSensorType: string | null;
+  selectedView: string;
+  rotationValues: { x: number; y: number; z: number };
+  axisMapping: { up: string; left: string; out: string };
+  sensorPlacements: { [sensorType: string]: SensorPlacement };
 
   // Actions
   setSensorMapping: (mapping: SensorMapping) => void;
@@ -45,6 +59,14 @@ interface IMUStore {
   setIKResults: (results: IKResults) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  
+  // Sensor placement actions
+  setSelectedSensorType: (type: string | null) => void;
+  setSelectedView: (view: string) => void;
+  setRotationValues: (values: { x: number; y: number; z: number }) => void;
+  setAxisMapping: (mapping: { up: string; left: string; out: string }) => void;
+  setSensorPlacement: (sensorType: string, placement: SensorPlacement) => void;
+  
   reset: () => void;
 }
 
@@ -66,24 +88,35 @@ export const useIMUStore = create<IMUStore>((set) => ({
   ikResults: null,
   isLoading: false,
   error: null,
+  
+  // Sensor placement initial state
+  selectedSensorType: null,
+  selectedView: "lateral",
+  rotationValues: { x: 0, y: 0, z: 0 },
+  axisMapping: { up: "X", left: "Y", out: "Z" },
+  sensorPlacements: {},
 
   // Actions
   setSensorMapping: (mapping) => set({ sensorMapping: mapping }),
-  
   setCalibrationData: (data) => set({ calibrationData: data }),
-  
   setMainTaskData: (data) => set({ mainTaskData: data }),
-  
   setIKParameters: (params) =>
     set((state) => ({
       ikParameters: { ...state.ikParameters, ...params },
     })),
-  
   setIKResults: (results) => set({ ikResults: results }),
-  
   setLoading: (loading) => set({ isLoading: loading }),
-  
   setError: (error) => set({ error }),
+  
+  // Sensor placement actions
+  setSelectedSensorType: (type) => set({ selectedSensorType: type }),
+  setSelectedView: (view) => set({ selectedView: view }),
+  setRotationValues: (values) => set({ rotationValues: values }),
+  setAxisMapping: (mapping) => set({ axisMapping: mapping }),
+  setSensorPlacement: (sensorType, placement) => 
+    set((state) => ({
+      sensorPlacements: { ...state.sensorPlacements, [sensorType]: placement }
+    })),
   
   reset: () =>
     set({
@@ -94,5 +127,10 @@ export const useIMUStore = create<IMUStore>((set) => ({
       ikResults: null,
       isLoading: false,
       error: null,
+      selectedSensorType: null,
+      selectedView: "lateral",
+      rotationValues: { x: 0, y: 0, z: 0 },
+      axisMapping: { up: "X", left: "Y", out: "Z" },
+      sensorPlacements: {},
     }),
 })); 

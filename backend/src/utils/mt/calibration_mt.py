@@ -10,8 +10,8 @@ from numpy.linalg import norm, inv
 from sklearn.decomposition import PCA 
 from tqdm import tqdm 
 
-from imu_benchmark.constants import constant_mt, constant_common
-from imu_benchmark.utils.events import event_mt
+from constants import constant_mt, constant_common
+from utils.events import event_mt
 
 
 # --- Get PCA axis --- #

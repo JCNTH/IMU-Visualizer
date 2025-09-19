@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm 
 from scipy import signal 
 
-from imu_benchmark.constants import constant_common, constant_mt
+from constants import constant_common, constant_mt
 
 
 # --- Obtain all data from Xsens sensors --- #

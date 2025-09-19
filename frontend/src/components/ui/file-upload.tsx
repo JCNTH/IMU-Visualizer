@@ -19,6 +19,7 @@ interface FileUploadProps {
   className?: string;
   disabled?: boolean;
   description?: string;
+  allowFolders?: boolean; // New prop for folder upload
 }
 
 interface FileWithProgress {
@@ -35,11 +36,12 @@ export function FileUpload({
   onUploadError,
   accept = ".csv,.txt",
   multiple = false,
-  maxFiles = 10,
+  maxFiles = 50,
   maxSize = 100, // 100MB default
   className,
   disabled = false,
   description,
+  allowFolders = false,
 }: FileUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [files, setFiles] = useState<FileWithProgress[]>([]);
@@ -73,7 +75,7 @@ export function FileUpload({
       return;
     }
     
-    if (files.length + fileArray.length > maxFiles) {
+    if (maxFiles > 0 && files.length + fileArray.length > maxFiles) {
       onUploadError?.(`Maximum ${maxFiles} files allowed`);
       return;
     }
@@ -180,6 +182,7 @@ export function FileUpload({
           onChange={handleFileInput}
           disabled={disabled}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          {...(allowFolders ? { webkitdirectory: "", directory: "" } : {})}
         />
         
         <div className="flex flex-col items-center justify-center text-center">
@@ -188,17 +191,21 @@ export function FileUpload({
             isDragOver ? "text-[#C41230]" : "text-gray-400"
           )} />
           <p className="text-sm font-medium text-gray-700">
-            {isDragOver ? "Drop files here" : "Drag and drop files here"}
+            {isDragOver 
+              ? `Drop ${allowFolders ? "folder" : "files"} here` 
+              : `Drag and drop ${allowFolders ? "a folder" : "files"} here`
+            }
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            or click to browse files
+            or click to browse {allowFolders ? "folder" : "files"}
           </p>
           {description && (
             <p className="text-xs text-gray-400 mt-2">{description}</p>
           )}
           <div className="text-xs text-gray-400 mt-2">
             Max size: {maxSize}MB • Formats: {accept}
-            {multiple && ` • Max files: ${maxFiles}`}
+            {multiple && maxFiles > 0 && ` • Max files: ${maxFiles}`}
+            {allowFolders && " • Folder upload supported"}
           </div>
         </div>
       </div>

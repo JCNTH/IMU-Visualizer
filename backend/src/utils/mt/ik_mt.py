@@ -16,8 +16,6 @@ from scipy.spatial.transform import Rotation as R
 # from imu_benchmark.constants import constant_common, constant_mt
 # from imu_benchmark.utils.mt import sfa
 
-import os, sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from constants import constant_common, constant_mt
 from utils.mt import sfa
 
@@ -38,6 +36,9 @@ def get_imu_orientation_mt(imu_data_mt, f_type, fs = constant_mt.MT_SAMPLING_RAT
     imu_orientation_mt = {}
     time_mt            = {}
     print('fs = %s' %(fs))
+    
+    # DEBUG: Print input data keys
+    print("DEBUG: Input imu_data_mt keys:", list(imu_data_mt.keys()))
 
     for sensor_name in tqdm(imu_data_mt.keys()):
         start_time = time.time()
@@ -72,6 +73,9 @@ def get_imu_orientation_mt(imu_data_mt, f_type, fs = constant_mt.MT_SAMPLING_RAT
 
         time_mt[sensor_name] = (time.time() - start_time)/imu_orientation_mt[sensor_name].shape[0]
 
+    # DEBUG: Print output orientation keys
+    print("DEBUG: Output imu_orientation_mt keys:", list(imu_orientation_mt.keys()))
+    
     if get_time:
         return imu_orientation_mt, time_mt
          
@@ -198,6 +202,18 @@ def get_all_ja_mt(seg2sens, orientation_mt, c_flag = True):
         + mt_ja (dict of np.array): joit angles
     '''
     mt_ja = {}
+
+    # DEBUG: Print what keys are available
+    print("DEBUG: orientation_mt keys:", list(orientation_mt.keys()))
+    print("DEBUG: seg2sens keys:", list(seg2sens.keys()))
+    
+    # Check if pelvis exists in both dictionaries
+    if 'pelvis' not in orientation_mt:
+        print("ERROR: 'pelvis' not found in orientation_mt")
+        print("Available orientation keys:", list(orientation_mt.keys()))
+    if 'pelvis' not in seg2sens:
+        print("ERROR: 'pelvis' not found in seg2sens")
+        print("Available seg2sens keys:", list(seg2sens.keys()))
 
     pelvis_angles = get_pelvis_angles(orientation_mt['pelvis'], seg2sens['pelvis'])
     mt_ja['pelvis_tilt'] = constant_common.JA_SIGN['pelvis_tilt']*pelvis_angles[:, 2]

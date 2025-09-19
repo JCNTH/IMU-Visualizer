@@ -5,76 +5,187 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { DragControls } from "three/examples/jsm/controls/DragControls.js";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useIMUStore } from "@/store/imuStore";
 
-type SensorType = "pelvis" | "leftThigh" | "rightThigh" | "leftShank" | "rightShank" | "leftToes" | "rightToes";
-type ViewType = "frontal" | "lateral" | "medial" | "posterior";
-type AxisType = "X" | "Y" | "Z";
-
-interface SensorState {
-  pelvis?: THREE.Mesh;
-  leftThigh?: THREE.Mesh;
-  rightThigh?: THREE.Mesh;
-  leftShank?: THREE.Mesh;
-  rightShank?: THREE.Mesh;
-  leftToes?: THREE.Mesh;
-  rightToes?: THREE.Mesh;
+interface IMUVisualizationProps {
+  sidebarCollapsed?: boolean;
 }
 
-interface RotationValues {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export function IMUVisualization() {
+export function IMUVisualization({ sidebarCollapsed = false }: IMUVisualizationProps) {
+  const { 
+    selectedSensorType, 
+    selectedView, 
+    rotationValues, 
+    axisMapping,
+    setRotationValues,
+    setSensorPlacement 
+  } = useIMUStore();
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
-  const skeletonRef = useRef<THREE.Group | null>(null);
+  const skeletonRef = useRef<THREE.Object3D | null>(null);
   const dragControlsRef = useRef<DragControls | null>(null);
   
-  const [selectedSensorType, setSelectedSensorType] = useState<SensorType | null>(null);
-  const [selectedView, setSelectedView] = useState<ViewType>("lateral");
-  const [rotationValues, setRotationValues] = useState<RotationValues>({ x: 0, y: 0, z: 0 });
-  const [axisMapping, setAxisMapping] = useState({ up: "X", left: "Y", out: "Z" });
-  const [showControls, setShowControls] = useState(true);
-  
-  const sensorTypesRef = useRef<SensorState>({});
-  const currentSelectedSensorRef = useRef<THREE.Mesh | null>(null);
+  const sensorTypesRef = useRef<{ [key: string]: THREE.Mesh }>({});
   const draggableSensorsRef = useRef<THREE.Mesh[]>([]);
-
-  const sensorButtons: { type: SensorType; label: string }[] = [
-    { type: "pelvis", label: "Pelvis" },
-    { type: "leftThigh", label: "Left Thigh" },
-    { type: "rightThigh", label: "Right Thigh" },
-    { type: "leftShank", label: "Left Shank" },
-    { type: "rightShank", label: "Right Shank" },
-    { type: "leftToes", label: "Left Toes" },
-    { type: "rightToes", label: "Right Toes" },
-  ];
-
-  const viewButtons: { type: ViewType; label: string }[] = [
-    { type: "frontal", label: "Frontal" },
-    { type: "lateral", label: "Lateral" },
-    { type: "medial", label: "Medial" },
-    { type: "posterior", label: "Posterior" },
-  ];
+  
+  // Client-side only rendering to prevent hydration issues
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    setIsClient(true);
+  }, []);
 
-    // Scene setup
+  // Handle sidebar resize with smooth transitions
+  useEffect(() => {
+    if (!isClient || !mountRef.current || !cameraRef.current || !rendererRef.current) return;
+
+    const resizeCanvas = () => {
+      if (mountRef.current && cameraRef.current && rendererRef.current) {
+        const width = mountRef.current.clientWidth;
+        const height = mountRef.current.clientHeight;
+        
+        cameraRef.current.aspect = width / height;
+        cameraRef.current.updateProjectionMatrix();
+        rendererRef.current.setSize(width, height);
+      }
+    };
+
+    // Use ResizeObserver for smooth, continuous resizing
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+
+    if (mountRef.current) {
+      resizeObserver.observe(mountRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isClient]);
+
+  const createSimpleSkeleton = (scene: THREE.Scene) => {
+    console.log("Creating simple skeleton...");
+    
+    const skeletonGroup = new THREE.Group();
+    
+    // Create simple skeleton using boxes
+    const createBone = (width: number, height: number, depth: number, color: number = 0x888888) => {
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      const material = new THREE.MeshLambertMaterial({ color, wireframe: false });
+      return new THREE.Mesh(geometry, material);
+    };
+    
+    // Pelvis
+    const pelvis = createBone(40, 20, 30, 0xaaaaaa);
+    pelvis.position.set(0, 100, 0);
+    skeletonGroup.add(pelvis);
+    
+    // Left leg
+    const leftThigh = createBone(15, 50, 15, 0x999999);
+    leftThigh.position.set(-15, 75, 0);
+    skeletonGroup.add(leftThigh);
+    
+    const leftShank = createBone(12, 45, 12, 0x999999);
+    leftShank.position.set(-15, 30, 0);
+    skeletonGroup.add(leftShank);
+    
+    const leftFoot = createBone(25, 8, 10, 0x999999);
+    leftFoot.position.set(-15, 5, 5);
+    skeletonGroup.add(leftFoot);
+    
+    // Right leg
+    const rightThigh = createBone(15, 50, 15, 0x999999);
+    rightThigh.position.set(15, 75, 0);
+    skeletonGroup.add(rightThigh);
+    
+    const rightShank = createBone(12, 45, 12, 0x999999);
+    rightShank.position.set(15, 30, 0);
+    skeletonGroup.add(rightShank);
+    
+    const rightFoot = createBone(25, 8, 10, 0x999999);
+    rightFoot.position.set(15, 5, 5);
+    skeletonGroup.add(rightFoot);
+    
+    // Torso
+    const torso = createBone(35, 60, 20, 0xaaaaaa);
+    torso.position.set(0, 140, 0);
+    skeletonGroup.add(torso);
+    
+    skeletonRef.current = skeletonGroup;
+    scene.add(skeletonGroup);
+    
+    // Setup drag controls
+    if (cameraRef.current && rendererRef.current) {
+      const dragControls = new DragControls(draggableSensorsRef.current, cameraRef.current, rendererRef.current.domElement);
+      dragControlsRef.current = dragControls;
+      
+      dragControls.addEventListener("dragstart", () => {
+        if (controlsRef.current) controlsRef.current.enabled = false;
+      });
+      
+      dragControls.addEventListener("dragend", () => {
+        if (controlsRef.current) controlsRef.current.enabled = true;
+      });
+      
+      dragControls.addEventListener("drag", (event) => {
+        const sensor = event.object as THREE.Mesh;
+        if (sensor.userData.sensorType && skeletonRef.current) {
+          // Snap sensor to skeleton surface during drag
+          snapSensorToSkeleton(sensor);
+          
+          // Update rotation values in store when sensor is moved
+          const euler = new THREE.Euler().setFromQuaternion(sensor.quaternion, "YXZ");
+          const degX = Math.round(THREE.MathUtils.radToDeg(euler.x));
+          const degY = Math.round(THREE.MathUtils.radToDeg(euler.y));
+          const degZ = Math.round(THREE.MathUtils.radToDeg(euler.z));
+          setRotationValues({ x: degX, y: degY, z: degZ });
+        }
+      });
+    }
+    
+    console.log("Simple skeleton created and added to scene");
+  };
+
+  const cleanGeometry = (geometry: THREE.BufferGeometry) => {
+    const posAttr = geometry.attributes.position;
+    if (posAttr) {
+      const arr = posAttr.array as Float32Array;
+      let foundNaN = false;
+      for (let i = 0; i < arr.length; i++) {
+        if (Number.isNaN(arr[i]) || arr[i] === undefined || !isFinite(arr[i])) {
+          arr[i] = 0;
+          foundNaN = true;
+        }
+      }
+      if (foundNaN) {
+        console.warn("Cleaned NaN/infinite values in geometry");
+        posAttr.needsUpdate = true;
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+      }
+    }
+  };
+
+  const animate = () => {
+    requestAnimationFrame(animate);
+    if (rendererRef.current && sceneRef.current && cameraRef.current) {
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+    }
+  };
+
+  useEffect(() => {
+    if (!mountRef.current || !isClient) return;
+
+    // Scene setup (matching legacy implementation)
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x222222);
     sceneRef.current = scene;
 
-    // Camera setup
+    // Camera setup (matching legacy)
     const camera = new THREE.PerspectiveCamera(
       45,
       mountRef.current.clientWidth / mountRef.current.clientHeight,
@@ -84,49 +195,56 @@ export function IMUVisualization() {
     camera.position.set(0, 200, 600);
     cameraRef.current = camera;
 
-    // Renderer setup
+    // Renderer setup (matching legacy)
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Controls setup
+    // Controls setup (matching legacy)
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 100, 0);
     controls.update();
     controlsRef.current = controls;
 
-    // Lighting
+    // Lighting (matching legacy)
     scene.add(new THREE.AmbientLight(0x888888));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(100, 500, 500);
     scene.add(directionalLight);
 
-    // Load skeleton
+    // Try to load detailed skeleton first, fallback to simple if it fails
     const objLoader = new OBJLoader();
+    console.log("Loading skeleton from /skeleton.obj...");
+    
     objLoader.load(
       "/skeleton.obj",
       (object) => {
-        // Clean and center the skeleton
+        console.log("Skeleton loaded successfully:", object);
+        
+        // Process the loaded skeleton
         object.traverse((child) => {
           if (child instanceof THREE.Mesh && child.geometry) {
             cleanGeometry(child.geometry);
             child.geometry.center();
+            // Set material to be more visible
+            child.material = new THREE.MeshLambertMaterial({ 
+              color: 0xcccccc, 
+              transparent: false 
+            });
           }
         });
 
+        // Center the skeleton
         const box = new THREE.Box3().setFromObject(object);
         const boxCenter = box.getCenter(new THREE.Vector3());
         object.position.sub(boxCenter);
 
-        skeletonRef.current = object;
-        scene.add(object);
-
-        // Setup camera positioning
+        // Position camera (matching legacy implementation)
         const newBox = new THREE.Box3().setFromObject(object);
         const newBoxSize = newBox.getSize(new THREE.Vector3());
         const newCenter = newBox.getCenter(new THREE.Vector3());
-        newCenter.x += 0.5;
+        newCenter.x += 0.5; // This shifts the center point left by 0.5 units
 
         const halfSize = (newBoxSize.length() * 1.2) * 0.5;
         const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5);
@@ -139,12 +257,15 @@ export function IMUVisualization() {
         camera.far = newBoxSize.length() * 100;
         camera.updateProjectionMatrix();
         camera.lookAt(newCenter);
-
+        
         controls.target.copy(newCenter);
         controls.maxDistance = newBoxSize.length() * 10;
         controls.update();
 
-        // Setup drag controls
+        skeletonRef.current = object;
+        scene.add(object);
+        
+        // Setup drag controls (matching legacy)
         const dragControls = new DragControls(draggableSensorsRef.current, camera, renderer.domElement);
         dragControlsRef.current = dragControls;
         
@@ -157,24 +278,43 @@ export function IMUVisualization() {
         });
         
         dragControls.addEventListener("drag", (event) => {
-          currentSelectedSensorRef.current = event.object as THREE.Mesh;
-          updateRotationSlidersFromSensor(event.object as THREE.Mesh);
+          const sensor = event.object as THREE.Mesh;
+          if (sensor.userData.sensorType) {
+            // Update rotation values in store when sensor is moved
+            const euler = new THREE.Euler().setFromQuaternion(sensor.quaternion, "YXZ");
+            const degX = Math.round(THREE.MathUtils.radToDeg(euler.x));
+            const degY = Math.round(THREE.MathUtils.radToDeg(euler.y));
+            const degZ = Math.round(THREE.MathUtils.radToDeg(euler.z));
+            setRotationValues({ x: degX, y: degY, z: degZ });
+          }
         });
-
-        // Start animation loop
-        animate();
+        
+        console.log("Skeleton and drag controls loaded successfully");
       },
       (xhr) => {
         if (xhr.total) {
-          console.log((xhr.loaded / xhr.total * 100).toFixed(2) + "% loaded");
+          console.log("Loading skeleton:", (xhr.loaded / xhr.total * 100).toFixed(2) + "% loaded");
         }
       },
       (error) => {
-        console.error("Error loading skeleton:", error);
+        console.error("Failed to load skeleton, creating simple fallback:", error);
+        // Create simple skeleton as fallback
+        createSimpleSkeleton(scene);
       }
     );
 
-    // Mouse click handler for sensor placement
+    // Handle window resize
+    const handleResize = () => {
+      if (mountRef.current && camera && renderer) {
+        camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    // Mouse click handler for sensor placement with snapping
     const onMouseClick = (event: MouseEvent) => {
       event.preventDefault();
       if (!skeletonRef.current || !selectedSensorType) return;
@@ -190,58 +330,64 @@ export function IMUVisualization() {
       
       if (intersects.length > 0) {
         const intersect = intersects[0];
-        const localPoint = intersect.point.clone();
+        
+        // Get the surface normal for proper sensor orientation
+        const normal = intersect.face?.normal.clone();
+        if (normal) {
+          // Transform normal to world space
+          normal.transformDirection(intersect.object.matrixWorld);
+        }
+        
+        // Use the intersection point directly (already in world space)
+        const snapPoint = intersect.point.clone();
+        
+        // Offset the sensor slightly away from the surface
+        if (normal) {
+          snapPoint.add(normal.multiplyScalar(2)); // Move 2 units away from surface
+        }
+        
+        // Convert to local coordinates for the skeleton
+        const localPoint = snapPoint.clone();
         skeletonRef.current.worldToLocal(localPoint);
 
-        placeSensor(selectedSensorType, localPoint);
+        placeSensor(selectedSensorType, localPoint, normal);
       }
     };
 
     renderer.domElement.addEventListener("click", onMouseClick);
 
+    // Start animation
+    animate();
+
     // Cleanup
     return () => {
-      if (mountRef.current && renderer.domElement) {
+      window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener("click", onMouseClick);
+      if (mountRef.current && renderer.domElement && mountRef.current.contains(renderer.domElement)) {
         mountRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, [selectedSensorType]);
+  }, [isClient, selectedSensorType]);
 
-  const cleanGeometry = (geometry: THREE.BufferGeometry) => {
-    const posAttr = geometry.attributes.position;
-    if (posAttr) {
-      const arr = posAttr.array as Float32Array;
-      let foundNaN = false;
-      for (let i = 0; i < arr.length; i++) {
-        if (Number.isNaN(arr[i]) || arr[i] === undefined) {
-          arr[i] = 0;
-          foundNaN = true;
-        }
-      }
-      if (foundNaN) {
-        console.warn("Cleaned NaN values in geometry");
-        posAttr.needsUpdate = true;
-        geometry.computeBoundingBox();
-        geometry.computeBoundingSphere();
-      }
-    }
-  };
-
-  const placeSensor = (sensorType: SensorType, position: THREE.Vector3) => {
+  const placeSensor = (sensorType: string, position: THREE.Vector3, normal?: THREE.Vector3) => {
     if (!skeletonRef.current) return;
 
     // Calculate sensor size relative to skeleton
     const box = new THREE.Box3().setFromObject(skeletonRef.current);
     const size = box.getSize(new THREE.Vector3());
-    const sensorWidth = size.x * 0.05;
-    const sensorHeight = size.y * 0.05;
-    const sensorDepth = size.z * 0.05;
+    const sensorWidth = size.x * 0.03;  // Slightly smaller for better fit
+    const sensorHeight = size.y * 0.03;
+    const sensorDepth = size.z * 0.03;
 
     let sensor = sensorTypesRef.current[sensorType];
     if (!sensor) {
       const geometry = new THREE.BoxGeometry(sensorWidth, sensorHeight, sensorDepth);
-      const material = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+      const material = new THREE.MeshLambertMaterial({ 
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.8
+      });
       sensor = new THREE.Mesh(geometry, material);
       sensorTypesRef.current[sensorType] = sensor;
       sensor.userData = { sensorType, placementView: selectedView };
@@ -252,36 +398,79 @@ export function IMUVisualization() {
       }
     }
 
+    // Snap to surface position
     sensor.position.copy(position);
-    currentSelectedSensorRef.current = sensor;
-    updateRotationSlidersFromSensor(sensor);
-    applyCombinedRotation(sensor);
-  };
-
-  const updateRotationSlidersFromSensor = (sensor: THREE.Mesh) => {
-    const euler = new THREE.Euler().setFromQuaternion(sensor.quaternion, "YXZ");
-    const degX = Math.round(THREE.MathUtils.radToDeg(euler.x));
-    const degY = Math.round(THREE.MathUtils.radToDeg(euler.y));
-    const degZ = Math.round(THREE.MathUtils.radToDeg(euler.z));
     
-    setRotationValues({ x: degX, y: degY, z: degZ });
+    // Orient sensor to surface normal if available
+    if (normal) {
+      // Create a rotation that aligns the sensor's up axis with the surface normal
+      const up = new THREE.Vector3(0, 1, 0);
+      const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+      sensor.quaternion.copy(quaternion);
+    } else {
+      applySensorRotation(sensor);
+    }
+    
+    // Update store with placement info
+    setSensorPlacement(sensorType, {
+      type: sensorType,
+      position: { x: position.x, y: position.y, z: position.z },
+      rotation: rotationValues,
+      placementView: selectedView
+    });
+    
+    console.log(`Sensor ${sensorType} snapped to skeleton at position:`, position);
   };
 
-  const getDefaultAxis = (letter: AxisType): THREE.Vector3 => {
-    switch (letter) {
-      case "X": return new THREE.Vector3(1, 0, 0);
-      case "Y": return new THREE.Vector3(0, 1, 0);
-      case "Z": return new THREE.Vector3(0, 0, 1);
-      default: return new THREE.Vector3(1, 0, 0);
+  const snapSensorToSkeleton = (sensor: THREE.Mesh) => {
+    if (!skeletonRef.current || !cameraRef.current) return;
+
+    // Cast a ray downward from sensor position to find skeleton surface
+    const sensorWorldPosition = new THREE.Vector3();
+    sensor.getWorldPosition(sensorWorldPosition);
+    
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(sensorWorldPosition, new THREE.Vector3(0, -1, 0)); // Cast downward
+    
+    const intersects = raycaster.intersectObject(skeletonRef.current, true);
+    
+    if (intersects.length > 0) {
+      const intersect = intersects[0];
+      const snapPoint = intersect.point.clone();
+      
+      // Get surface normal for orientation
+      const normal = intersect.face?.normal;
+      if (normal) {
+        // Offset sensor slightly from surface
+        const worldNormal = normal.clone();
+        worldNormal.transformDirection((intersect.object as THREE.Mesh).matrixWorld);
+        snapPoint.add(worldNormal.multiplyScalar(3));
+      }
+      
+      // Convert to local coordinates
+      const localSnapPoint = snapPoint.clone();
+      skeletonRef.current.worldToLocal(localSnapPoint);
+      sensor.position.copy(localSnapPoint);
+      
+      console.log(`Sensor snapped to skeleton surface`);
     }
   };
 
-  const applyCombinedRotation = (sensor: THREE.Mesh) => {
+  const applySensorRotation = (sensor: THREE.Mesh) => {
     if (!sensor) return;
 
-    const upAxis = getDefaultAxis(axisMapping.up as AxisType);
-    const leftAxis = getDefaultAxis(axisMapping.left as AxisType);
-    const outAxis = getDefaultAxis(axisMapping.out as AxisType);
+    const getAxis = (letter: string): THREE.Vector3 => {
+      switch (letter) {
+        case "X": return new THREE.Vector3(1, 0, 0);
+        case "Y": return new THREE.Vector3(0, 1, 0);
+        case "Z": return new THREE.Vector3(0, 0, 1);
+        default: return new THREE.Vector3(1, 0, 0);
+      }
+    };
+
+    const upAxis = getAxis(axisMapping.up);
+    const leftAxis = getAxis(axisMapping.left);
+    const outAxis = getAxis(axisMapping.out);
 
     // Check for unique axes
     if (new Set([axisMapping.up, axisMapping.left, axisMapping.out]).size !== 3) {
@@ -302,210 +491,37 @@ export function IMUVisualization() {
     sensor.quaternion.copy(baseQuat.multiply(sliderQuat));
   };
 
-  const handleSensorSelect = (sensorType: SensorType) => {
-    if (selectedSensorType === sensorType) {
-      setSelectedSensorType(null);
-      currentSelectedSensorRef.current = null;
-    } else {
-      setSelectedSensorType(sensorType);
-      const sensor = sensorTypesRef.current[sensorType];
-      if (sensor) {
-        currentSelectedSensorRef.current = sensor;
-        updateRotationSlidersFromSensor(sensor);
-      }
-    }
-  };
-
-  const handleRotationChange = (axis: keyof RotationValues, value: number) => {
-    const newRotation = { ...rotationValues, [axis]: value };
-    setRotationValues(newRotation);
-    
-    if (currentSelectedSensorRef.current) {
-      // Apply rotation immediately
-      const sensor = currentSelectedSensorRef.current;
-      const sx = THREE.MathUtils.degToRad(newRotation.x);
-      const sy = THREE.MathUtils.degToRad(newRotation.y);
-      const sz = THREE.MathUtils.degToRad(newRotation.z);
-      const euler = new THREE.Euler(sx, sy, sz, "YXZ");
-      sensor.quaternion.setFromEuler(euler);
-    }
-  };
-
-  const animate = () => {
-    requestAnimationFrame(animate);
-    if (rendererRef.current && sceneRef.current && cameraRef.current) {
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
-    }
-  };
-
-  // Handle window resize
+  // Apply rotation when rotation values change
   useEffect(() => {
-    const handleResize = () => {
-      if (mountRef.current && cameraRef.current && rendererRef.current) {
-        cameraRef.current.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
-        cameraRef.current.updateProjectionMatrix();
-        rendererRef.current.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-      }
-    };
+    if (selectedSensorType && sensorTypesRef.current[selectedSensorType]) {
+      applySensorRotation(sensorTypesRef.current[selectedSensorType]);
+    }
+  }, [rotationValues, axisMapping, selectedSensorType]);
 
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  // Show loading state until client-side rendering is ready
+  if (!isClient) {
+    return (
+      <div className="w-full h-full relative bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+          <p>Loading 3D Visualization...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative bg-gray-900">
       {/* 3D Visualization Container */}
       <div ref={mountRef} className="w-full h-full" />
-
-      {/* Control Panel */}
-      {showControls && (
-        <Card className="absolute top-4 left-4 w-80 max-h-[calc(100vh-2rem)] overflow-y-auto bg-white/95 backdrop-blur-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">IMU Sensor Placement</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute top-2 right-2"
-              onClick={() => setShowControls(false)}
-            >
-              ✕
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Sensor Type Selection */}
-            <div>
-              <Label className="text-sm font-medium mb-2 block">Select Sensor Type:</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {sensorButtons.map(({ type, label }) => (
-                  <Button
-                    key={type}
-                    variant={selectedSensorType === type ? "default" : "outline"}
-                    size="sm"
-                    className={`text-xs ${
-                      selectedSensorType === type 
-                        ? "bg-[#C41230] hover:bg-[#a10e25]" 
-                        : "hover:bg-gray-100"
-                    }`}
-                    onClick={() => handleSensorSelect(type)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Placement View */}
-            <div>
-              <Label className="text-sm font-medium mb-2 block">Placement View (Informational)</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {viewButtons.map(({ type, label }) => (
-                  <Button
-                    key={type}
-                    variant={selectedView === type ? "default" : "outline"}
-                    size="sm"
-                    className={`text-xs ${
-                      selectedView === type 
-                        ? "bg-gray-600 hover:bg-gray-700" 
-                        : "hover:bg-gray-100"
-                    }`}
-                    onClick={() => setSelectedView(type)}
-                  >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Rotation Controls */}
-            {selectedSensorType && currentSelectedSensorRef.current && (
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Rotation Fine-Tuning (°)</Label>
-                <div className="space-y-3">
-                  {(["x", "y", "z"] as const).map((axis) => (
-                    <div key={axis} className="flex items-center space-x-2">
-                      <Label className="w-4 text-xs">{axis.toUpperCase()}:</Label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="360"
-                        value={rotationValues[axis]}
-                        onChange={(e) => handleRotationChange(axis, parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <span className="w-8 text-xs text-right">{rotationValues[axis]}°</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Axis Definition */}
-            <div>
-              <Label className="text-sm font-medium mb-2 block">Define Sensor Axes</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Label className="w-16 text-xs">Up Axis:</Label>
-                  <Select value={axisMapping.up} onValueChange={(value) => setAxisMapping({...axisMapping, up: value})}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="X">X</SelectItem>
-                      <SelectItem value="Y">Y</SelectItem>
-                      <SelectItem value="Z">Z</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Label className="w-16 text-xs">Left Axis:</Label>
-                  <Select value={axisMapping.left} onValueChange={(value) => setAxisMapping({...axisMapping, left: value})}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="X">X</SelectItem>
-                      <SelectItem value="Y">Y</SelectItem>
-                      <SelectItem value="Z">Z</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Label className="w-16 text-xs">Out Axis:</Label>
-                  <Select value={axisMapping.out} onValueChange={(value) => setAxisMapping({...axisMapping, out: value})}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="X">X</SelectItem>
-                      <SelectItem value="Y">Y</SelectItem>
-                      <SelectItem value="Z">Z</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {/* Instructions */}
-            <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-              <p className="font-medium mb-1">Instructions:</p>
-              <p>1. Select a sensor type above</p>
-              <p>2. Click on the skeleton to place the sensor</p>
-              <p>3. Drag sensors to reposition them</p>
-              <p>4. Use rotation controls to fine-tune orientation</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Toggle Controls Button */}
-      {!showControls && (
-        <Button
-          className="absolute top-4 left-4 bg-[#C41230] hover:bg-[#a10e25]"
-          onClick={() => setShowControls(true)}
-        >
-          Show Controls
-        </Button>
-      )}
+      
+      {/* Overlay Instructions */}
+      <div className="absolute bottom-4 left-4 bg-black/70 text-white p-3 rounded text-sm">
+        <p className="font-medium">3D Controls:</p>
+        <p>• Mouse: Orbit camera</p>
+        <p>• Wheel: Zoom in/out</p>
+        <p>• Use sidebar to place sensors</p>
+      </div>
     </div>
   );
 } 

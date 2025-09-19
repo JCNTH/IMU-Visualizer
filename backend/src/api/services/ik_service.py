@@ -11,9 +11,10 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 
 # Import the existing MT IK pipeline
-import sys
-sys.path.append(str(Path(__file__).parent.parent))
 from scripts.run_mt import mt_ik_in_memory
+
+# Import the new mot generation utilities
+from utils.mot_generator import create_mot_from_ik_results
 
 class IKService:
     """Service for handling inverse kinematics processing"""
@@ -54,7 +55,7 @@ class IKService:
             traceback.print_exc()
             raise
     
-    async def run_ik(self, main_task_data: Dict[str, Any], calibration_data: Dict[str, Dict[str, Any]], params: Dict[str, Any]) -> Dict[str, Any]:
+    async def run_ik(self, main_task_data: Dict[str, Any], calibration_data: Dict[str, Dict[str, Any]], sensor_mapping: Dict[str, str], params: Dict[str, Any]) -> Dict[str, Any]:
         """Run inverse kinematics calculation"""
         try:
             print("DEBUG: Running IK with parameters:")
@@ -78,8 +79,80 @@ class IKService:
                     except Exception:
                         print(f"ERROR: Could not convert calibration data for task '{task_id}', sensor '{sensor}'")
             
+            # Apply sensor mapping to convert sensor IDs to body segment names
+            print("DEBUG: Applying sensor mapping...")
+            print("DEBUG: Sensor mapping:", sensor_mapping)
+            
+            # Track unmapped sensors for user feedback
+            unmapped_sensors = []
+            
+            # Convert main task data using sensor mapping
+            mapped_main_task_data = {}
+            for sensor_key, sensor_data in main_task_data.items():
+                # Extract sensor ID from the key (remove folder prefix if present)
+                sensor_id = sensor_key.split('/')[-1].replace('.txt', '').replace('.csv', '')
+                # Find the last part that looks like a sensor ID (8 hex characters)
+                parts = sensor_id.split('_')
+                actual_sensor_id = None
+                for part in parts:
+                    if len(part) == 8 and all(c in '0123456789ABCDEFabcdef' for c in part):
+                        actual_sensor_id = part.upper()
+                        break
+                
+                if actual_sensor_id and actual_sensor_id in sensor_mapping:
+                    body_segment = sensor_mapping[actual_sensor_id]
+                    mapped_main_task_data[body_segment] = sensor_data
+                    print(f"DEBUG: Mapped sensor {actual_sensor_id} → {body_segment}")
+                else:
+                    unmapped_sensors.append({"file": sensor_key, "sensor_id": actual_sensor_id})
+                    print(f"INFO: Skipping unmapped sensor {sensor_key} (ID: {actual_sensor_id}) - no mapping provided")
+            
+            # Convert calibration data using sensor mapping
+            mapped_calibration_data = {}
+            for task_id, task_data in calibration_data.items():
+                mapped_calibration_data[task_id] = {}
+                for sensor_key, sensor_data in task_data.items():
+                    # Extract sensor ID from the key
+                    sensor_id = sensor_key.split('/')[-1].replace('.txt', '').replace('.csv', '')
+                    parts = sensor_id.split('_')
+                    actual_sensor_id = None
+                    for part in parts:
+                        if len(part) == 8 and all(c in '0123456789ABCDEFabcdef' for c in part):
+                            actual_sensor_id = part.upper()
+                            break
+                    
+                    if actual_sensor_id and actual_sensor_id in sensor_mapping:
+                        body_segment = sensor_mapping[actual_sensor_id]
+                        mapped_calibration_data[task_id][body_segment] = sensor_data
+                        print(f"DEBUG: Mapped calibration sensor {actual_sensor_id} → {body_segment}")
+                    else:
+                        print(f"INFO: Skipping unmapped calibration sensor {sensor_key} (ID: {actual_sensor_id}) - no mapping provided")
+            
+            # Summary of processing results
+            total_main_files = len(main_task_data)
+            mapped_main_files = len(mapped_main_task_data)
+            total_calib_files = sum(len(task_data) for task_data in calibration_data.values())
+            mapped_calib_files = sum(len(task_data) for task_data in mapped_calibration_data.values())
+            
+            print(f"INFO: Processing Summary:")
+            print(f"  - Main task: {mapped_main_files}/{total_main_files} files mapped")
+            print(f"  - Calibration: {mapped_calib_files}/{total_calib_files} files mapped")
+            print(f"  - Unmapped sensors: {len(unmapped_sensors)} files skipped")
+            
+            print("DEBUG: Mapped main task data keys:", list(mapped_main_task_data.keys()))
+            print("DEBUG: Mapped calibration data keys:", {k: list(v.keys()) for k, v in mapped_calibration_data.items()})
+            
+            # Check if we have minimum required sensors
+            required_sensors = ['pelvis', 'thigh_l', 'shank_l', 'foot_l']
+            missing_required = [sensor for sensor in required_sensors if sensor not in mapped_main_task_data]
+            
+            if missing_required:
+                error_msg = f"Missing required sensors: {missing_required}. Please update your sensor mapping to include these body segments."
+                print(f"ERROR: {error_msg}")
+                return {"error": error_msg, "unmapped_sensors": unmapped_sensors}
+            
             # Call the in-memory IK pipeline
-            print("DEBUG: Calling mt_ik_in_memory with the provided data ...")
+            print("DEBUG: Calling mt_ik_in_memory with the mapped data ...")
             results = mt_ik_in_memory(
                 selected_setup=params.get("selected_setup", "mm"),
                 f_type=params.get("filter_type", "Xsens"),
@@ -87,9 +160,33 @@ class IKService:
                 subject=params.get("subject", 1),
                 task=params.get("task", "treadmill_walking"),
                 remove_offset=params.get("remove_offset", True),
-                calibration_data=calibration_data,
-                main_task_data=main_task_data
+                calibration_data=mapped_calibration_data,
+                main_task_data=mapped_main_task_data
             )
+            
+            print("DEBUG: IK pipeline returned results")
+            joint_angles = results.get("joint_angles", {})
+            print(f"DEBUG: Available joint angles: {list(joint_angles.keys())}")
+            
+            # Add missing pelvis position data for OpenSim (critical!)
+            if joint_angles and 'pelvis_tilt' in joint_angles:
+                n_frames = len(joint_angles['pelvis_tilt'])
+                
+                if 'pelvis_tx' not in joint_angles:
+                    joint_angles['pelvis_tx'] = np.zeros(n_frames)
+                    print("DEBUG: Added pelvis_tx (forward/backward position)")
+                    
+                if 'pelvis_ty' not in joint_angles:
+                    joint_angles['pelvis_ty'] = np.ones(n_frames) * 0.9  # 0.9m height
+                    print("DEBUG: Added pelvis_ty (height position)")
+                    
+                if 'pelvis_tz' not in joint_angles:
+                    joint_angles['pelvis_tz'] = np.zeros(n_frames)
+                    print("DEBUG: Added pelvis_tz (left/right position)")
+                
+                # Update results with enhanced joint angles
+                results["joint_angles"] = joint_angles
+                print(f"DEBUG: Enhanced joint angles now has {len(joint_angles)} columns")
             
             print("DEBUG: IK pipeline returned the following results:")
             print(results)
@@ -108,6 +205,10 @@ class IKService:
             else:
                 print("DEBUG: No 'joint_angles' key found in results.")
             
+            # Add unmapped sensor information to successful results
+            if "error" not in results and unmapped_sensors:
+                results["unmapped_sensors"] = unmapped_sensors
+            
             return results
 
         except Exception as e:
@@ -117,12 +218,14 @@ class IKService:
     
     def save_computed_joint_angles_to_dataframe(self, joint_angles: Dict[str, Any]) -> pd.DataFrame:
         """Convert joint angles dictionary to DataFrame with degrees to radians conversion"""
-        # Define the desired order for left and right side keys
-        order_left = ['hip_adduction_l', 'hip_rotation_l', 'hip_flexion_l', 'knee_flexion_l', 'ankle_angle_l']
-        order_right = ['hip_adduction_r', 'hip_rotation_r', 'hip_flexion_r', 'knee_flexion_r', 'ankle_angle_r']
+        # Define the complete joint order including pelvis data (CRITICAL for OpenSim)
+        pelvis_order = ['pelvis_tilt', 'pelvis_list', 'pelvis_rot']
+        order_left = ['hip_adduction_l', 'hip_rotation_l', 'hip_flexion_l', 'knee_adduction_l', 'knee_rotation_l', 'knee_flexion_l', 'ankle_adduction_l', 'ankle_rotation_l', 'ankle_flexion_l']
+        order_right = ['hip_adduction_r', 'hip_rotation_r', 'hip_flexion_r', 'knee_adduction_r', 'knee_rotation_r', 'knee_flexion_r', 'ankle_adduction_r', 'ankle_rotation_r', 'ankle_flexion_r']
         
-        # Create the list of keys to output – only add keys that exist in the IK dictionary
-        column_order = [key for key in order_left if key in joint_angles] + \
+        # Create the complete list of keys to output – include pelvis data!
+        column_order = [key for key in pelvis_order if key in joint_angles] + \
+                      [key for key in order_left if key in joint_angles] + \
                       [key for key in order_right if key in joint_angles]
         
         # Build a new dictionary with only those keys, converting values from degrees to radians
@@ -158,3 +261,21 @@ class IKService:
         
         zip_buffer.seek(0)
         return zip_buffer.getvalue() 
+    
+    def create_mot_file(self, ik_results: Dict[str, Any], session_name: str = "session") -> str:
+        """Create a .mot file from IK results for video generation"""
+        try:
+            # Create output directory in static folder
+            static_dir = Path(__file__).parent.parent.parent.parent / "static" / "sessions"
+            static_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate .mot file
+            mot_path = create_mot_from_ik_results(ik_results, str(static_dir), session_name)
+            
+            print(f"Created .mot file: {mot_path}")
+            return mot_path
+            
+        except Exception as e:
+            print(f"Error creating .mot file: {e}")
+            traceback.print_exc()
+            raise 
