@@ -1,0 +1,9 @@
+sensor_name id
+chest   00B4D7D4
+pelvis  00B4D7D3
+thigh_l 00B4D7FD
+shank_l 00B4D7CE
+foot_l  00B4D7FF
+thigh_r 00B4D6D1
+shank_r 00B4D7FB
+foot_r  00B4D7FE
